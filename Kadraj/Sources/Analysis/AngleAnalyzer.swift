@@ -316,7 +316,7 @@ final class AngleAnalyzer: ObservableObject {
         }
     }
 
-    private static func uiRect(fromVision rect: CGRect) -> CGRect {
+    private nonisolated static func uiRect(fromVision rect: CGRect) -> CGRect {
         // Vision bottom-left origin -> UIKit top-left origin
         CGRect(
             x: rect.origin.x,

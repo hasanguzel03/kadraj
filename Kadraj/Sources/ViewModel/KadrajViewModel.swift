@@ -364,7 +364,9 @@ final class KadrajViewModel: ObservableObject {
                     strength: strength,
                     autoHdr: autoHdr,
                     progressHandler: { pct in
-                        self.videoExportProgress = pct
+                        Task { @MainActor in
+                            self.videoExportProgress = pct
+                        }
                     }
                 )
                 try await filmEngine.saveVideoToLibrary(exportedURL)

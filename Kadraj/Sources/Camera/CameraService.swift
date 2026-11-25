@@ -38,7 +38,7 @@ final class CameraService: NSObject, ObservableObject {
     private let videoDataOutput = AVCaptureVideoDataOutput()
     private let videoBufferQueue = DispatchQueue(label: "com.kadraj.camera.frames", qos: .userInitiated)
     private let frameLock = NSLock()
-    private var latestSnapshotBuffer: CVPixelBuffer?
+    private nonisolated(unsafe) var latestSnapshotBuffer: CVPixelBuffer?
 
     private var activeSettings = CameraSettings()
     private var switchOverFactor: CGFloat = 1.0
@@ -405,7 +405,7 @@ final class CameraService: NSObject, ObservableObject {
                 let frameDur = CMTime(value: 1, timescale: CMTimeScale(chosenFps))
                 device.activeVideoMinFrameDuration = frameDur
                 device.activeVideoMaxFrameDuration = frameDur
-                if chosenHdr && device.isColorSpaceSupported(.HLG_BT2020) {
+                if chosenHdr && chosen.supportedColorSpaces.contains(.HLG_BT2020) {
                     device.activeColorSpace = .HLG_BT2020
                 }
                 device.unlockForConfiguration()

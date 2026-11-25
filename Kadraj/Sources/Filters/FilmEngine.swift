@@ -196,7 +196,7 @@ final class FilmEngine {
                 return
             }
             let out = self.applyChain(
-                to: request.sourceImage.clampingToExtent(),
+                to: request.sourceImage.clampedToExtent(),
                 profile: profile,
                 adjustments: adj,
                 includeGrainAndVignette: true
