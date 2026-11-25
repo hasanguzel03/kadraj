@@ -1,0 +1,49 @@
+name: build-kadraj-ios-ipa
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build-unsigned-ipa:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: |
+          if ! command -v xcodegen >/dev/null 2>&1; then
+            brew install xcodegen
+          fi
+
+      - name: Generate Xcode Project
+        run: xcodegen generate
+
+      - name: Build Release App (Unsigned iOS Device)
+        run: |
+          xcodebuild build \
+            -project Kadraj.xcodeproj \
+            -scheme Kadraj \
+            -sdk iphoneos \
+            -configuration Release \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            -derivedDataPath DerivedData
+
+      - name: Package Unsigned IPA
+        run: |
+          mkdir -p Payload
+          cp -r DerivedData/Build/Products/Release-iphoneos/Kadraj.app Payload/
+          zip -r Kadraj-unsigned.ipa Payload
+          rm -rf Payload
+
+      - name: Upload Kadraj IPA Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kadraj-iOS-IPA
+          path: Kadraj-unsigned.ipa
+          retention-days: 30
