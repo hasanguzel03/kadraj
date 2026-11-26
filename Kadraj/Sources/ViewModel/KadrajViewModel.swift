@@ -153,10 +153,13 @@ final class KadrajViewModel: ObservableObject {
         if updated.isReadyToCapture {
             if settleTask == nil {
                 settleTask = Task {
-                    try? await Task.sleep(nanoseconds: 400_000_000)
+                    try? await Task.sleep(nanoseconds: 380_000_000)
                     guard !Task.isCancelled,
                           self.captureState == .guiding,
                           self.guideState.isAligned else { return }
+                    self.cameraService.animateZoom(to: target.recommendedUiZoom)
+                    try? await Task.sleep(nanoseconds: 320_000_000)
+                    guard !Task.isCancelled, self.captureState == .guiding else { return }
                     await self.executePhotoCapture(evOverride: target.recommendedEvBias)
                 }
             }

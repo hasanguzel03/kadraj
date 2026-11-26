@@ -186,12 +186,16 @@ final class AngleAnalyzer: ObservableObject {
         let offsetY = CGFloat((-pitchDiff / verticalHalfFovRad)).clamped(to: -0.12...0.12)
 
         let dist = hypot(offsetX, offsetY)
-        let rollPenalty = CGFloat(min(abs(orientation.rollDegrees) / 18.0, 0.35))
-        let rawScore = max(0, min(1, 1.0 - (dist / 0.16) - rollPenalty))
+        let rollPenalty = CGFloat(min(abs(orientation.rollDegrees) / 20.0, 0.30))
+        let rawScore = max(0, min(1, 1.0 - (dist / 0.24) - rollPenalty))
 
-        let isAligned = dist < 0.045 && abs(orientation.rollDegrees) < 2.2
+        // Sweet spot: ±7° angular tolerance and ±4° horizon roll tolerance (~80-85% match)
+        let angularTolRad = 7.0 * Double.pi / 180.0
+        let withinAngle = abs(yawDiff) <= angularTolRad && abs(pitchDiff) <= angularTolRad
+        let withinHorizon = abs(orientation.rollDegrees) <= 4.0
+        let isAligned = withinAngle && withinHorizon
         return CompositionGuideState(
-            alignmentScore: isAligned ? max(rawScore, 0.92) : rawScore,
+            alignmentScore: isAligned ? max(rawScore, 0.85) : rawScore,
             isAligned: isAligned,
             isStable: orientation.isStable,
             isReadyToCapture: isAligned && orientation.isStable,
