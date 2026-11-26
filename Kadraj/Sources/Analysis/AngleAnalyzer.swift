@@ -148,9 +148,13 @@ final class AngleAnalyzer: ObservableObject {
         let maxEdgeZoom = min(0.84 / boxW, 0.84 / boxH)
         let safeZoom = min(max(minUiZoom, min(baseSafeZoom, maxEdgeZoom)), maxUiZoom)
 
-        // Offset from current anchor to desired Golden Ratio goal
-        let deltaXNorm = clampedAnchorX - goalX
-        let deltaYNorm = goalY - clampedAnchorY
+        // Clamp goal anchor within ±12% of screen center (0.38...0.62) so guide never leaves frame
+        let safeGoalX = goalX.clamped(to: 0.38...0.62)
+        let safeGoalY = goalY.clamped(to: 0.38...0.62)
+
+        // Offset from current anchor to desired Golden Ratio goal (bounded to ±12% FOV)
+        let deltaXNorm = (clampedAnchorX - safeGoalX).clamped(to: -0.12...0.12)
+        let deltaYNorm = (safeGoalY - clampedAnchorY).clamped(to: -0.12...0.12)
         let targetAzimuth = normalizeAngle(current.azimuthRad + Double(deltaXNorm) * horizontalHalfFovRad * 0.65)
         let targetPitch = min(max(current.pitchRad + Double(deltaYNorm) * verticalHalfFovRad * 0.65, -0.75), 0.85)
 
@@ -162,8 +166,8 @@ final class AngleAnalyzer: ObservableObject {
             targetPitchRad: targetPitch,
             anchorX: clampedAnchorX,
             anchorY: clampedAnchorY,
-            goalAnchorX: goalX,
-            goalAnchorY: goalY,
+            goalAnchorX: safeGoalX,
+            goalAnchorY: safeGoalY,
             recommendedUiZoom: safeZoom,
             recommendedEvBias: evBias,
             supportsVisionTracking: detected.hasSubjectBox
@@ -177,14 +181,15 @@ final class AngleAnalyzer: ObservableObject {
         let yawDiff = normalizeAngle(target.targetAzimuthRad - orientation.azimuthRad)
         let pitchDiff = target.targetPitchRad - orientation.pitchRad
 
-        let offsetX = CGFloat((yawDiff / horizontalHalfFovRad)).clamped(to: -0.72...0.72)
-        let offsetY = CGFloat((-pitchDiff / verticalHalfFovRad)).clamped(to: -0.72...0.72)
+        // Keep target point strictly within ±12% of screen center (normalized 0.38...0.62)
+        let offsetX = CGFloat((yawDiff / horizontalHalfFovRad)).clamped(to: -0.12...0.12)
+        let offsetY = CGFloat((-pitchDiff / verticalHalfFovRad)).clamped(to: -0.12...0.12)
 
         let dist = hypot(offsetX, offsetY)
         let rollPenalty = CGFloat(min(abs(orientation.rollDegrees) / 18.0, 0.35))
-        let rawScore = max(0, min(1, 1.0 - (dist / 0.55) - rollPenalty))
+        let rawScore = max(0, min(1, 1.0 - (dist / 0.16) - rollPenalty))
 
-        let isAligned = dist < 0.11 && abs(orientation.rollDegrees) < 2.2
+        let isAligned = dist < 0.045 && abs(orientation.rollDegrees) < 2.2
         return CompositionGuideState(
             alignmentScore: isAligned ? max(rawScore, 0.92) : rawScore,
             isAligned: isAligned,
