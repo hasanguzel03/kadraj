@@ -42,7 +42,7 @@ final class CameraService: NSObject, ObservableObject {
 
     private var activeSettings = CameraSettings()
     private var switchOverFactor: CGFloat = 1.0
-    private var pendingPhotoContinuation: CheckedContinuation<UIImage, Error>?
+    private nonisolated(unsafe) var inProgressPhotoCaptureDelegates: [Int64: PhotoCaptureProcessor] = [:]
     private var pendingVideoCompletion: ((Result<RecordedVideoResult, Error>) -> Void)?
     private var recordingTimer: Timer?
     private var recordStartDate: Date?
@@ -197,14 +197,51 @@ final class CameraService: NSObject, ObservableObject {
             try? await Task.sleep(nanoseconds: 160_000_000)
         }
 
+        let aspect = activeSettings.aspectRatio
+        let quality = activeSettings.captureQuality
+        let flashWanted = isFlashEnabled && !isFrontCamera
+
         return try await withCheckedThrowingContinuation { continuation in
-            self.pendingPhotoContinuation = continuation
-            let settings = AVCapturePhotoSettings()
-            if !isFrontCamera, let dev = videoInput?.device, dev.hasFlash {
-                settings.flashMode = isFlashEnabled ? .on : .off
+            sessionQueue.async { [weak self] in
+                guard let self else {
+                    continuation.resume(throwing: NSError(domain: "KadrajPhoto", code: -1, userInfo: [NSLocalizedDescriptionKey: "Camera service released"]))
+                    return
+                }
+                guard self.session.isRunning,
+                      let connection = self.photoOutput.connection(with: .video),
+                      connection.isActive,
+                      connection.isEnabled else {
+                    continuation.resume(throwing: NSError(domain: "KadrajPhoto", code: -2, userInfo: [NSLocalizedDescriptionKey: "Camera is not ready for photo capture"]))
+                    return
+                }
+
+                let settings = AVCapturePhotoSettings()
+                let desiredFlash: AVCaptureDevice.FlashMode = flashWanted ? .on : .off
+                if self.photoOutput.supportedFlashModes.contains(desiredFlash) {
+                    settings.flashMode = desiredFlash
+                }
+
+                let desiredPrio: AVCapturePhotoOutput.QualityPrioritization = (quality == .highEfficiency) ? .speed : .quality
+                let maxPrio = self.photoOutput.maxPhotoQualityPrioritization
+                settings.photoQualityPrioritization = (desiredPrio.rawValue <= maxPrio.rawValue) ? desiredPrio : maxPrio
+
+                let uniqueID = settings.uniqueID
+                let processor = PhotoCaptureProcessor(
+                    aspectRatio: aspect,
+                    maxDim: quality.maxPhotoDimension,
+                    orientAndCrop: { raw in
+                        Self.orientAndCropPhoto(raw, aspectRatio: aspect, maxDim: quality.maxPhotoDimension)
+                    },
+                    onComplete: { [weak self] result in
+                        self?.sessionQueue.async {
+                            self?.inProgressPhotoCaptureDelegates[uniqueID] = nil
+                        }
+                        continuation.resume(with: result)
+                    }
+                )
+                self.inProgressPhotoCaptureDelegates[uniqueID] = processor
+                self.photoOutput.capturePhoto(with: settings, delegate: processor)
             }
-            settings.photoQualityPrioritization = activeSettings.captureQuality == .highEfficiency ? .speed : .quality
-            photoOutput.capturePhoto(with: settings, delegate: self)
         }
     }
 
@@ -436,38 +473,59 @@ final class CameraService: NSObject, ObservableObject {
     }
 }
 
-extension CameraService: AVCapturePhotoCaptureDelegate {
-    nonisolated func photoOutput(
+private final class PhotoCaptureProcessor: NSObject, AVCapturePhotoCaptureDelegate, @unchecked Sendable {
+    private let aspectRatio: AspectRatioOption
+    private let maxDim: CGFloat
+    private let orientAndCrop: (UIImage) -> UIImage
+    private let onComplete: (Result<UIImage, Error>) -> Void
+    private var didFinish = false
+
+    init(
+        aspectRatio: AspectRatioOption,
+        maxDim: CGFloat,
+        orientAndCrop: @escaping (UIImage) -> UIImage,
+        onComplete: @escaping (Result<UIImage, Error>) -> Void
+    ) {
+        self.aspectRatio = aspectRatio
+        self.maxDim = maxDim
+        self.orientAndCrop = orientAndCrop
+        self.onComplete = onComplete
+    }
+
+    func photoOutput(
         _ output: AVCapturePhotoOutput,
         didFinishProcessingPhoto photo: AVCapturePhoto,
         error: Error?
     ) {
+        guard !didFinish else { return }
+        didFinish = true
         if let error {
-            Task { @MainActor in
-                self.pendingPhotoContinuation?.resume(throwing: error)
-                self.pendingPhotoContinuation = nil
-            }
+            onComplete(.failure(error))
             return
         }
         guard let data = photo.fileDataRepresentation(),
               let rawImage = UIImage(data: data) else {
-            Task { @MainActor in
-                self.pendingPhotoContinuation?.resume(throwing: NSError(domain: "KadrajPhoto", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed decoding photo"]))
-                self.pendingPhotoContinuation = nil
-            }
+            onComplete(.failure(NSError(domain: "KadrajPhoto", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed decoding photo"])))
             return
         }
-
-        Task { @MainActor in
-            let aspect = self.activeSettings.aspectRatio
-            let maxDim = self.activeSettings.captureQuality.maxPhotoDimension
-            let processed = Self.orientAndCropPhoto(rawImage, aspectRatio: aspect, maxDim: maxDim)
-            self.pendingPhotoContinuation?.resume(returning: processed)
-            self.pendingPhotoContinuation = nil
-        }
+        let processed = orientAndCrop(rawImage)
+        onComplete(.success(processed))
     }
 
-    private static func orientAndCropPhoto(
+    func photoOutput(
+        _ output: AVCapturePhotoOutput,
+        didFinishCaptureFor resolvedSettings: AVCaptureResolvedPhotoSettings,
+        error: Error?
+    ) {
+        if let error, !didFinish {
+            didFinish = true
+            onComplete(.failure(error))
+        }
+    }
+}
+
+extension CameraService {
+    private nonisolated static func orientAndCropPhoto(
         _ image: UIImage,
         aspectRatio: AspectRatioOption,
         maxDim: CGFloat
