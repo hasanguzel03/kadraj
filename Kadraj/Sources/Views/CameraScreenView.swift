@@ -61,7 +61,8 @@ struct CameraScreenView: View {
                                     showHorizon: viewModel.selectedMode == .level || settings.enableHorizonLevel,
                                     alwaysShowHorizon: viewModel.selectedMode == .level,
                                     showCrosshair: viewModel.selectedMode == .level,
-                                    rollDegrees: viewModel.angleAnalyzer.orientation.rollDegrees
+                                    rollDegrees: viewModel.angleAnalyzer.orientation.rollDegrees,
+                                    pitchRad: viewModel.angleAnalyzer.orientation.pitchRad
                                 )
                             }
 
@@ -594,19 +595,20 @@ struct CameraScreenView: View {
 
     private func checkHorizonHaptic(roll: Double) {
         let levelActive = viewModel.captureState == .guiding || viewModel.selectedMode == .level || settings.enableHorizonLevel
-        guard levelActive else {
+        let extremeTilt = abs(angleAnalyzer.orientation.pitchRad) > 0.95
+        guard levelActive, !extremeTilt else {
             wasHorizonLevel = false
             return
         }
         let absRoll = abs(roll)
         let now = Date()
-        if !wasHorizonLevel && absRoll < 1.5 {
+        if !wasHorizonLevel && absRoll < 2.0 {
             wasHorizonLevel = true
             if now.timeIntervalSince(lastHorizonTick) > 0.45 {
                 lastHorizonTick = now
                 viewModel.haptics.triggerHorizonLevelTick()
             }
-        } else if wasHorizonLevel && absRoll >= 2.5 {
+        } else if wasHorizonLevel && absRoll >= 3.0 {
             wasHorizonLevel = false
         }
     }

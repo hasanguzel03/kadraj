@@ -7,6 +7,7 @@ struct GridAndHorizonView: View {
     let alwaysShowHorizon: Bool
     let showCrosshair: Bool
     let rollDegrees: Double
+    var pitchRad: Double = 0
 
     var body: some View {
         ZStack {
@@ -24,6 +25,7 @@ struct GridAndHorizonView: View {
             if showHorizon {
                 IosBrokenHorizonLevel(
                     rollDegrees: rollDegrees,
+                    pitchRad: pitchRad,
                     alwaysVisible: alwaysShowHorizon,
                     showCrosshair: showCrosshair
                 )
@@ -53,14 +55,17 @@ struct GridAndHorizonView: View {
 
 struct IosBrokenHorizonLevel: View {
     let rollDegrees: Double
+    var pitchRad: Double = 0
     let alwaysVisible: Bool
     let showCrosshair: Bool
 
     var body: some View {
         let absRoll = abs(rollDegrees)
-        let visible = alwaysVisible || absRoll <= 18.0
-        let isLevel = absRoll < 1.5
-        let barColor = isLevel ? KadrajTheme.yellow : Color.white.opacity(0.86)
+        let extremeTilt = abs(pitchRad) > 0.95
+        let visible = !extremeTilt && (alwaysVisible || absRoll <= 18.0)
+        let isLevel = absRoll < 2.0
+        let sideColor = isLevel ? KadrajTheme.yellow : Color.white.opacity(0.55)
+        let centerColor = isLevel ? KadrajTheme.yellow : Color.white.opacity(0.9)
 
         ZStack {
             if visible {
@@ -70,25 +75,25 @@ struct IosBrokenHorizonLevel: View {
 
                     if showCrosshair {
                         var cross = Path()
-                        cross.move(to: CGPoint(x: cx, y: cy - 10))
-                        cross.addLine(to: CGPoint(x: cx, y: cy + 10))
-                        ctx.stroke(cross, with: .color(barColor.opacity(0.45)), style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
+                        cross.move(to: CGPoint(x: cx, y: cy - 8))
+                        cross.addLine(to: CGPoint(x: cx, y: cy + 8))
+                        ctx.stroke(cross, with: .color(sideColor.opacity(0.45)), style: StrokeStyle(lineWidth: 0.9, lineCap: .round))
                     }
 
                     var wings = Path()
-                    wings.move(to: CGPoint(x: cx - 44, y: cy))
-                    wings.addLine(to: CGPoint(x: cx - 26, y: cy))
-                    wings.move(to: CGPoint(x: cx + 26, y: cy))
-                    wings.addLine(to: CGPoint(x: cx + 44, y: cy))
-                    ctx.stroke(wings, with: .color(.black.opacity(0.35)), style: StrokeStyle(lineWidth: 3.8, lineCap: .round))
-                    ctx.stroke(wings, with: .color(barColor), style: StrokeStyle(lineWidth: 1.8, lineCap: .round))
+                    wings.move(to: CGPoint(x: cx - 42, y: cy))
+                    wings.addLine(to: CGPoint(x: cx - 22, y: cy))
+                    wings.move(to: CGPoint(x: cx + 22, y: cy))
+                    wings.addLine(to: CGPoint(x: cx + 42, y: cy))
+                    ctx.stroke(wings, with: .color(.black.opacity(0.3)), style: StrokeStyle(lineWidth: 2.0, lineCap: .round))
+                    ctx.stroke(wings, with: .color(sideColor), style: StrokeStyle(lineWidth: 1.0, lineCap: .round))
                 }
 
                 Capsule()
-                    .fill(barColor)
-                    .frame(width: 36, height: isLevel ? 2.6 : 1.9)
-                    .shadow(color: .black.opacity(0.4), radius: 1.5)
-                    .rotationEffect(.degrees(rollDegrees))
+                    .fill(centerColor)
+                    .frame(width: isLevel ? 44 : 36, height: isLevel ? 1.4 : 1.0)
+                    .shadow(color: .black.opacity(0.35), radius: 1.0)
+                    .rotationEffect(.degrees(isLevel ? 0 : rollDegrees))
                     .animation(.linear(duration: 0.06), value: rollDegrees)
             }
         }
