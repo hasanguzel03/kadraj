@@ -198,19 +198,8 @@ final class KadrajViewModel: ObservableObject {
         let proxy = filmEngine.makeProxyImage(photo, maxDimension: 1080)
         photoProxyBase = proxy
 
-        let s = settingsStore.settings
-        let autoHdr: Bool
-        switch s.hdrMode {
-        case .on:
-            autoHdr = true
-        case .off:
-            autoHdr = s.autoEnhancePostHdr
-        case .auto:
-            autoHdr = s.autoEnhancePostHdr || filmEngine.isHighDynamicRangeScene(photo)
-        }
-
         selectedPhotoProfile = .original
-        photoAdjustments = ImageAdjustments(filterStrength: 1.0, autoHdrEnabled: autoHdr)
+        photoAdjustments = ImageAdjustments(filterStrength: 1.0, autoHdrEnabled: false)
         photoThumbnails = []
         route = .photoEditor
         captureState = .ready
